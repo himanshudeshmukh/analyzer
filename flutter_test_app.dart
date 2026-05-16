@@ -8,8 +8,73 @@ import 'package:image_picker/image_picker.dart';
 import 'dart:io';
 import 'dart:convert';
 
-void main() {
-  runApp(const FashionAnalyzerApp());
+import 'package:Kaivon/presentation/screens/tripPlanner/fashionPedia.dart';
+import 'package:flutter/material.dart';
+import 'package:http/http.dart' as http;
+import 'package:http_parser/http_parser.dart';
+import 'package:image_picker/image_picker.dart';
+
+void main() => runApp(const Main());
+
+
+// ═══════════════════════════════════════════════════════════════════════════
+// MAIN APP — Flutter client for the Fashionpedia FastAPI service.
+//
+// This app provides 3 tabs:
+//   Tab 1: Health Check   → GET  /api/v1/health
+//   Tab 2: Image Analysis → POST /api/v1/images/analyze
+//   Tab 3: Outfit Recommend → POST /api/v1/outfits/recommend
+// ═══════════════════════════════════════════════════════════════════════════
+
+
+
+class Main extends StatelessWidget {
+  const Main({super.key});
+  @override
+  Widget build(BuildContext context) {
+    return MaterialApp(
+      title: 'Fashion Apps',
+      theme: ThemeData(
+        primarySwatch: Colors.deepPurple,
+        useMaterial3: true,
+      ),
+      home: const MainHome(),
+    );
+  }
+}
+
+class MainHome extends StatelessWidget {
+  const MainHome({super.key});
+
+  @override
+  Widget build(BuildContext context) {
+    return Scaffold(
+      body: Center(
+        child: Row(
+          children: [
+            TextButton(
+              onPressed: () => Navigator.push(
+                context,
+                MaterialPageRoute(
+                  builder: (_) => const FashionAnalyzerApp(),
+                ),
+              ),
+              child: const Text("Analyzer"),
+            ),
+            TextButton(
+              onPressed: () => Navigator.push(
+                context,
+                MaterialPageRoute(
+                  builder: (_) => const FashionpediaApp(),
+                ),
+              ),
+              child: const Text("Recommend"),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
 }
 
 class FashionAnalyzerApp extends StatelessWidget {
@@ -36,7 +101,8 @@ class AnalyzerHome extends StatefulWidget {
 }
 
 class _AnalyzerHomeState extends State<AnalyzerHome> {
-  final TextEditingController _baseUrlController = TextEditingController();
+  static const String _baseUrl = 'https://fashion-image-analyzer.onrender.com';
+  
   final ImagePicker _imagePicker = ImagePicker();
   final List<File> _selectedImages = [];
   
@@ -44,19 +110,6 @@ class _AnalyzerHomeState extends State<AnalyzerHome> {
   bool _isLoading = false;
   Map<String, dynamic> _analysisResult = {};
   Map<String, dynamic> _healthStatus = {};
-
-  @override
-  void initState() {
-    super.initState();
-    // Default to localhost for local testing, change to your Render URL
-    _baseUrlController.text = 'http://localhost:8000';
-  }
-
-  @override
-  void dispose() {
-    _baseUrlController.dispose();
-    super.dispose();
-  }
 
   // Test the health endpoint
   Future<void> _checkHealth() async {
@@ -66,9 +119,8 @@ class _AnalyzerHomeState extends State<AnalyzerHome> {
     });
 
     try {
-      final String baseUrl = _baseUrlController.text.trim();
       final response = await http.get(
-        Uri.parse('$baseUrl/health'),
+        Uri.parse('$_baseUrl/health'),
         headers: {'Accept': 'application/json'},
       ).timeout(const Duration(seconds: 10));
 
@@ -167,8 +219,7 @@ class _AnalyzerHomeState extends State<AnalyzerHome> {
     });
 
     try {
-      final String baseUrl = _baseUrlController.text.trim();
-      final uri = Uri.parse('$baseUrl/v1/analyze-images');
+      final uri = Uri.parse('$_baseUrl/v1/analyze-images');
 
       // Build multipart request
       final request = http.MultipartRequest('POST', uri);
@@ -325,48 +376,19 @@ class _AnalyzerHomeState extends State<AnalyzerHome> {
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.stretch,
           children: [
-            // Server URL Input
-            Card(
-              elevation: 2,
-              child: Padding(
-                padding: const EdgeInsets.all(16.0),
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    const Text(
-                      'API Configuration',
-                      style: TextStyle(
-                        fontSize: 16,
-                        fontWeight: FontWeight.bold,
-                      ),
-                    ),
-                    const SizedBox(height: 12),
-                    TextField(
-                      controller: _baseUrlController,
-                      decoration: InputDecoration(
-                        hintText: 'http://localhost:8000',
-                        labelText: 'Base URL',
-                        border: OutlineInputBorder(
-                          borderRadius: BorderRadius.circular(8),
-                        ),
-                        prefixIcon: const Icon(Icons.link),
-                      ),
-                    ),
-                    const SizedBox(height: 12),
-                    ElevatedButton.icon(
-                      onPressed: _isLoading ? null : _checkHealth,
-                      icon: const Icon(Icons.health_and_safety),
-                      label: const Text('Check Health'),
-                      style: ElevatedButton.styleFrom(
-                        backgroundColor: Colors.blue,
-                        foregroundColor: Colors.white,
-                        padding: const EdgeInsets.symmetric(
-                          vertical: 12,
-                        ),
-                      ),
-                    ),
-                  ],
+            // Health Check Button
+            ElevatedButton.icon(
+              onPressed: _isLoading ? null : _checkHealth,
+              icon: const Icon(Icons.health_and_safety),
+              label: const Text('Check Health'),
+              style: ElevatedButton.styleFrom(
+                backgroundColor: Colors.blue,
+                foregroundColor: Colors.white,
+                padding: const EdgeInsets.symmetric(
+                  vertical: 12,
+                  horizontal: 24,
                 ),
+              ),
             ),
             const SizedBox(height: 16),
 

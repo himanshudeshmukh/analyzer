@@ -52,59 +52,65 @@ settings = get_settings()
 settings.artifacts_dir.mkdir(parents=True, exist_ok=True)
  
  
- # Create the application lifespan so expensive models are initialized only once during startup.
+ # Create the application lifespan so expensive models are deferred until first use.
 @asynccontextmanager
 async def lifespan(app: FastAPI):
-     # Create the local artifact store used to persist processed images.
-     artifact_store = LocalArtifactStore(settings.artifacts_dir)
-     # Create the background remover backed by rembg.
-     background_remover = RembgBackgroundRemover(settings.rembg_model_name)
-     # Create the shared CLIP zero-shot classifier used by the fallback detector and metadata builder.
-     clip_classifier = ClipZeroShotClassifier(settings.clip_model_name)
-     # Create the optional DeepFashion2 TorchScript detector when a checkpoint path is configured.
-     deepfashion2_detector = DeepFashion2TorchscriptDetector(
-         # Pass the configured checkpoint path into the detector.
-         checkpoint_path=settings.deepfashion2_torchscript_path,
-         # Pass the configured detector threshold into the detector.
-         confidence_threshold=settings.detector_confidence_threshold,
-     )
-     # Create the alpha-mask fallback detector used when the dedicated detector is absent or returns no boxes.
-     fallback_detector = AlphaMaskClipDetector(clip_classifier)
-     # Create the composite detector that prefers DeepFashion2 but can fall back to CLIP.
-     detector = CompositeGarmentDetector(
-         # Pass the primary detector into the detector chain.
-         primary=deepfashion2_detector,
-         # Pass the fallback detector into the detector chain.
-         fallback=fallback_detector,
-         # Pass the configuration switch that enables or disables fallback logic.
-         enable_fallback=settings.enable_clip_fallback_detector,
-     )
-     # Create the garment metadata builder that enriches each detected crop.
-     metadata_builder = GarmentMetadataBuilder(
-         # Pass the shared CLIP classifier into the metadata builder.
-         classifier=clip_classifier,
-         # Pass the configured attribute threshold into the metadata builder.
-         attribute_threshold=settings.attribute_confidence_threshold,
-     )
-     # Create the application-layer analysis service that orchestrates the full workflow.
-     analysis_service = FashionImageAnalysisService(
-         # Pass the shared settings object into the analysis service.
-         settings=settings,
-         # Pass the background remover into the analysis service.
-         background_remover=background_remover,
-         # Pass the detector chain into the analysis service.
-         detector=detector,
-         # Pass the metadata builder into the analysis service.
-         metadata_builder=metadata_builder,
-         # Pass the artifact store into the analysis service.
-         artifact_store=artifact_store,
-     )
      # Attach the settings singleton to application state so request handlers can read it.
      app.state.settings = settings
-     # Attach the analysis service singleton to application state so request handlers can use it.
-     app.state.analysis_service = analysis_service
-     # Yield control back to FastAPI once startup initialization is complete.
+     # Initialize analysis service as None; it will be lazily created on first request.
+     app.state.analysis_service = None
+     # Yield control back to FastAPI immediately so the port gets bound quickly.
      yield
+
+
+async def get_or_create_analysis_service(app: FastAPI) -> FashionImageAnalysisService:
+     """Lazily initialize the analysis service on first request."""
+     if app.state.analysis_service is None:
+         # Create the local artifact store used to persist processed images.
+         artifact_store = LocalArtifactStore(settings.artifacts_dir)
+         # Create the background remover backed by rembg.
+         background_remover = RembgBackgroundRemover(settings.rembg_model_name)
+         # Create the shared CLIP zero-shot classifier used by the fallback detector and metadata builder.
+         clip_classifier = ClipZeroShotClassifier(settings.clip_model_name)
+         # Create the optional DeepFashion2 TorchScript detector when a checkpoint path is configured.
+         deepfashion2_detector = DeepFashion2TorchscriptDetector(
+             # Pass the configured checkpoint path into the detector.
+             checkpoint_path=settings.deepfashion2_torchscript_path,
+             # Pass the configured detector threshold into the detector.
+             confidence_threshold=settings.detector_confidence_threshold,
+         )
+         # Create the alpha-mask fallback detector used when the dedicated detector is absent or returns no boxes.
+         fallback_detector = AlphaMaskClipDetector(clip_classifier)
+         # Create the composite detector that prefers DeepFashion2 but can fall back to CLIP.
+         detector = CompositeGarmentDetector(
+             # Pass the primary detector into the detector chain.
+             primary=deepfashion2_detector,
+             # Pass the fallback detector into the detector chain.
+             fallback=fallback_detector,
+             # Pass the configuration switch that enables or disables fallback logic.
+             enable_fallback=settings.enable_clip_fallback_detector,
+         )
+         # Create the garment metadata builder that enriches each detected crop.
+         metadata_builder = GarmentMetadataBuilder(
+             # Pass the shared CLIP classifier into the metadata builder.
+             classifier=clip_classifier,
+             # Pass the configured attribute threshold into the metadata builder.
+             attribute_threshold=settings.attribute_confidence_threshold,
+         )
+         # Create the application-layer analysis service that orchestrates the full workflow.
+         app.state.analysis_service = FashionImageAnalysisService(
+             # Pass the shared settings object into the analysis service.
+             settings=settings,
+             # Pass the background remover into the analysis service.
+             background_remover=background_remover,
+             # Pass the detector chain into the analysis service.
+             detector=detector,
+             # Pass the metadata builder into the analysis service.
+             metadata_builder=metadata_builder,
+             # Pass the artifact store into the analysis service.
+             artifact_store=artifact_store,
+         )
+     return app.state.analysis_service
  
  
  # Create the FastAPI application with a descriptive title and the custom lifespan handler.
@@ -128,10 +134,10 @@ def get_request_settings(request: Request) -> Settings:
      return request.app.state.settings
  
  
- # Read the analysis service singleton from the current request context.
-def get_analysis_service(request: Request) -> FashionImageAnalysisService:
-     # Return the analysis service stored during application startup.
-     return request.app.state.analysis_service
+ # Read the analysis service singleton from the current request context, creating it on first call.
+async def get_analysis_service(request: Request) -> FashionImageAnalysisService:
+     # Return the analysis service, creating it on first request if needed.
+     return await get_or_create_analysis_service(request.app)
  
  
  # Expose a small root endpoint so operators can discover the main API surface quickly.
@@ -177,8 +183,8 @@ async def analyze_images(
  ) -> BatchAnalysisResponse:
      # Read the settings singleton from the current request.
      current_settings = get_request_settings(request)
-     # Read the analysis service singleton from the current request.
-     analysis_service = get_analysis_service(request)
+     # Read the analysis service singleton from the current request (lazily initialized).
+     analysis_service = await get_analysis_service(request)
      # Reject empty file lists before any work begins.
      if not files:
          # Raise a client error that explains at least one image is required.
