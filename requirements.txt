@@ -1,0 +1,24 @@
+
+
+ # Install FastAPI for the HTTP API layer and generated OpenAPI docs.
+ fastapi>=0.111,<1.0
+ # Install Uvicorn so the FastAPI application can run as an ASGI server.
+ uvicorn[standard]>=0.30,<1.0
+ # Install Pydantic v2 for typed API schemas and validation.
+ pydantic>=2.7,<3.0
+ # Install Pydantic Settings for environment-driven configuration.
+ pydantic-settings>=2.2,<3.0
+ # Install python-multipart because FastAPI file uploads use multipart form-data.
+ python-multipart>=0.0.9,<1.0
+ # Install Pillow for image decoding, conversion, and PNG serialization.
+ Pillow>=10.0,<13.0
+ # Install NumPy for masks, bounding boxes, and color extraction.
+ numpy>=1.26,<3.0
+ # Install PyTorch for the optional DeepFashion2 TorchScript detector and device management.
+ torch>=2.2,<3.0
+ # Install Transformers so an open CLIP checkpoint can run zero-shot image classification.
+ transformers>=4.42,<5.0
+ # Install rembg with CPU support for open-source background removal.
+ rembg[cpu]>=2.0.64,<3.0
+ # Install ONNX Runtime because rembg uses ONNX models under the hood.
+ onnxruntime>=1.18,<2.0
