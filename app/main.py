@@ -31,20 +31,6 @@ from .pipeline import FashionImageAnalysisService
 from .settings import Settings
  # Import the settings factory used by the composition root.
 from .settings import get_settings
- # Import the CLIP fallback detector used when no DeepFashion2 model is configured.
-from .services import AlphaMaskClipDetector
- # Import the CLIP zero-shot classifier used for categories and garment attributes.
-from .services import ClipZeroShotClassifier
- # Import the detector chain that prefers DeepFashion2 but can fall back gracefully.
-from .services import CompositeGarmentDetector
- # Import the optional DeepFashion2 TorchScript detector.
-from .services import DeepFashion2TorchscriptDetector
- # Import the metadata builder that enriches each garment crop.
-from .services import GarmentMetadataBuilder
- # Import the local artifact store that persists processed PNG files.
-from .services import LocalArtifactStore
- # Import the rembg-backed background remover.
-from .services import RembgBackgroundRemover
  
  # Load the application settings once at import time so the static-files mount can be configured.
 settings = get_settings()
@@ -66,6 +52,15 @@ async def lifespan(app: FastAPI):
 async def get_or_create_analysis_service(app: FastAPI) -> FashionImageAnalysisService:
      """Lazily initialize the analysis service on first request."""
      if app.state.analysis_service is None:
+         # Import service classes only on first request to keep startup fast on Render.
+         from .services import AlphaMaskClipDetector
+         from .services import ClipZeroShotClassifier
+         from .services import CompositeGarmentDetector
+         from .services import DeepFashion2TorchscriptDetector
+         from .services import GarmentMetadataBuilder
+         from .services import LocalArtifactStore
+         from .services import RembgBackgroundRemover
+         
          # Create the local artifact store used to persist processed images.
          artifact_store = LocalArtifactStore(settings.artifacts_dir)
          # Create the background remover backed by rembg.
